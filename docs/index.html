@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TeamsBridgeMCP</title>
+<meta name="description" content="MCP server that lets AI agents read and write Microsoft Teams through the web client's own endpoints. No Microsoft Graph, no app registration.">
+<style>
+  :root {
+    --bg: #f7f7f5; --fg: #1d1d1f; --muted: #5b5b60; --card: #ffffff;
+    --line: #e2e2de; --accent: #4b53bc; --code-bg: #f0f0ec; --warn-bg: #fff6e0; --warn-line: #e9c46a;
+    --ok: #1a7f52; --no: #b4232c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --fg: #ececee; --muted: #a0a0a8; --card: #1d1d21;
+      --line: #2e2e34; --accent: #8f95f0; --code-bg: #26262b; --warn-bg: #2b2516; --warn-line: #8a7230;
+      --ok: #4cc38a; --no: #f0727a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141416; --fg: #ececee; --muted: #a0a0a8; --card: #1d1d21;
+    --line: #2e2e34; --accent: #8f95f0; --code-bg: #26262b; --warn-bg: #2b2516; --warn-line: #8a7230;
+    --ok: #4cc38a; --no: #f0727a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 48px 16px 64px; }
+  nav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.92rem; margin-bottom: 40px; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--accent); }
+  header h1 { font-size: 2.6rem; line-height: 1.12; margin: 0 0 12px; letter-spacing: -0.02em; }
+  header p.lead { font-size: 1.18rem; color: var(--muted); margin: 0 0 24px; max-width: 680px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; padding: 0; list-style: none; }
+  .pills li { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 3px 12px; font-size: 0.88rem; color: var(--muted); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-block; padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 600;
+    border: 1px solid var(--accent); color: var(--accent);
+  }
+  .btn.primary { background: var(--accent); color: var(--bg); }
+  .btn:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  h2 { font-size: 1.5rem; margin: 64px 0 12px; letter-spacing: -0.01em; scroll-margin-top: 16px; }
+  h3 { font-size: 1.08rem; margin: 24px 0 6px; }
+  p, li { max-width: 72ch; }
+  a { color: var(--accent); }
+  code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+  pre code { background: none; padding: 0; font-size: 0.88rem; line-height: 1.5; overflow-wrap: normal; }
+  figure { margin: 16px 0 8px; }
+  figure img { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 10px; }
+  figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 8px; }
+  .steps { counter-reset: s; list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .steps li { counter-increment: s; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 14px 52px; position: relative; }
+  .steps li::before { content: counter(s); position: absolute; left: 16px; top: 14px; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--bg); font-weight: 700; font-size: 0.85rem; display: grid; place-items: center; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th { font-weight: 600; }
+  td.ok { color: var(--ok); } td.no { color: var(--no); }
+  .ex { color: var(--muted); font-style: italic; }
+  .note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 14px 16px; }
+  .note p:last-child { margin-bottom: 0; }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin: 10px 0 0; }
+  footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
+  @media (max-width: 520px) { header h1 { font-size: 2rem; } main { padding-top: 24px; } h2 { margin-top: 48px; } }
+</style>
+</head>
+<body>
+<main>
+  <nav aria-label="Sections">
+    <a href="#how">How it works</a><a href="#tools">Tools</a><a href="#graph">vs. Graph</a><a href="#setup">Setup</a>
+    <a href="#config">Configuration</a><a href="#clients">Clients</a><a href="#security">Security</a><a href="#faq">FAQ</a><a href="#use">Responsible use</a><a href="#legal">Legal</a><a href="#private">Private project</a>
+  </nav>
+
+  <header>
+    <h1>TeamsBridgeMCP</h1>
+    <p class="lead">Let your AI agent read chats, answer in channels, search messages, send files and check meetings in Microsoft Teams. It signs in like you do in the browser, so you need no app registration and no admin consent.</p>
+    <ul class="pills" aria-label="Key facts">
+      <li>Model Context Protocol (stdio)</li><li>Node.js 20+</li><li>11 tools</li><li>Runs on your computer</li><li>Apache License 2.0</li>
+    </ul>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/GodModeAI2025/TeamsBridgeMCP">View on GitHub</a>
+      <a class="btn" href="#setup">Get started</a>
+    </div>
+  </header>
+
+  <h2 id="how">How it works</h2>
+  <p>The Teams web client talks to a handful of HTTPS services with a bearer token it gets when you sign in. TeamsBridgeMCP opens that same sign-in in your own browser, keeps the tokens on your disk and makes the same calls on behalf of your agent.</p>
+  <figure>
+    <picture>
+      <source srcset="assets/architecture-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="assets/architecture-light.png" width="2244" height="1560" loading="lazy"
+        alt="Architecture: on your computer, the AI agent calls TeamsBridgeMCP over MCP stdio. The server reads the endpoint from endpoints.json and the bearer token from session.json, then calls the Teams web APIs, the search service and OneDrive in your Microsoft 365 tenant over HTTPS. Chrome or Edge signs in at Microsoft with password and MFA and saves the tokens to session.json; on HTTP 401 the server triggers a re-login.">
+    </picture>
+    <figcaption>Everything in the left frame runs on your machine. Diagram made with <a href="https://github.com/tt-a1i/archify">Archify</a>.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><strong>Sign in once.</strong> <code>npm run login</code> opens Chrome or Edge with a dedicated profile. You sign in as usual, MFA included. The server reads the tokens from the app's own requests and writes them to <code>data/session.json</code>.</li>
+    <li><strong>Agent calls a tool.</strong> Your MCP client starts the server over stdio. Each tool looks up its HTTP request in <code>data/endpoints.json</code>, fills in your tenant values and sends it with your token.</li>
+    <li><strong>Tokens renew themselves.</strong> When a token is about to expire or a call returns 401, the server signs in again headless with the saved profile. A window only appears when Microsoft asks for your password or MFA.</li>
+  </ol>
+
+  <h2 id="tools">What your agent can do</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>What it does</th><th>Try asking</th></tr></thead>
+      <tbody>
+        <tr><td><code>list_chats</code></td><td>Recent chats, meeting chats and channels, newest first, with names for 1:1 chats</td><td class="ex">"What happened in my chats this morning?"</td></tr>
+        <tr><td><code>list_channels</code></td><td>Your teams and their channels</td><td class="ex">"Which channels does the Platform team have?"</td></tr>
+        <tr><td><code>list_messages</code></td><td>Messages of a chat or channel, including attached files</td><td class="ex">"Summarize the last 50 messages in #release."</td></tr>
+        <tr><td><code>send_message</code></td><td>Post to a chat or channel, or reply in a channel thread</td><td class="ex">"Reply in that thread that the fix is deployed."</td></tr>
+        <tr><td><code>start_chat</code></td><td>Open a 1:1 or group chat by e-mail address</td><td class="ex">"Start a chat with alex@contoso.com."</td></tr>
+        <tr><td><code>search_messages</code></td><td>Full-text search across chats and channels</td><td class="ex">"Find where we discussed the budget freeze."</td></tr>
+        <tr><td><code>upload_file</code></td><td>Upload a local file to your OneDrive, share it with the chat members and post it</td><td class="ex">"Send report.pdf to the project chat."</td></tr>
+        <tr><td><code>download_file</code></td><td>Save a file attached to a message</td><td class="ex">"Download the slides Sam posted yesterday."</td></tr>
+        <tr><td><code>list_meetings</code></td><td>Upcoming meetings with time, organizer and join link</td><td class="ex">"What meetings do I have tomorrow?"</td></tr>
+        <tr><td><code>teams_login</code></td><td>Open the browser to sign in</td><td class="ex">"Log me in to Teams."</td></tr>
+        <tr><td><code>teams_status</code></td><td>Show session and endpoint registry state</td><td class="ex">"Is the Teams connection working?"</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="graph">Why not Microsoft Graph?</h2>
+  <p>Graph is the official route and the right one for products and anything an organization rolls out. It needs an app registration in Entra ID and, for most chat scopes, admin consent. TeamsBridgeMCP targets the single user who wants their own agent on their own account today.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th>Microsoft Graph</th><th>TeamsBridgeMCP</th></tr></thead>
+      <tbody>
+        <tr><td>App registration</td><td class="no">required</td><td class="ok">none</td></tr>
+        <tr><td>Admin consent for chat access</td><td class="no">usually required</td><td class="ok">none, uses your sign-in</td></tr>
+        <tr><td>Documented and supported</td><td class="ok">yes</td><td class="no">no, internal endpoints</td></tr>
+        <tr><td>Stable across Teams updates</td><td class="ok">versioned API</td><td class="no">may break, fix in one JSON file</td></tr>
+        <tr><td>Suited for multi-user products</td><td class="ok">yes</td><td class="no">no, personal use</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="setup">Setup</h2>
+  <p>You need Node.js 20 or newer and Google Chrome or Microsoft Edge. The server drives your installed browser and downloads none of its own.</p>
+<pre><code>git clone https://github.com/GodModeAI2025/TeamsBridgeMCP.git
+cd TeamsBridgeMCP
+npm install
+npm run build
+npm test          # optional: checks the build, needs no Teams session
+npm run login     # browser opens, sign in, the window closes by itself</code></pre>
+  <p>Prefer Edge? Run <code>TEAMS_BROWSER=msedge npm run login</code> and pass <code>--browser msedge</code> to the server.</p>
+
+  <h2 id="config">What you may need to configure</h2>
+  <p>Nothing tenant-specific is built in. You pass your own values as command-line flags or as environment variables, flags win. The defaults fit tenants hosted in Europe.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Flag</th><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>--onedrive-host</code></td><td><code>TEAMS_ONEDRIVE_HOST</code></td><td>none</td><td><strong>Required for <code>upload_file</code>.</strong> Your OneDrive host, for example <code>contoso-my.sharepoint.com</code>. Open OneDrive in the browser and copy it from the address bar.</td></tr>
+        <tr><td><code>--region</code></td><td><code>TEAMS_REGION</code></td><td><code>emea</code></td><td>Chat service region. Outside Europe usually <code>amer</code> or <code>apac</code>.</td></tr>
+        <tr><td><code>--partition</code></td><td><code>TEAMS_PARTITION</code></td><td><code>emea-02</code></td><td>Partition for profiles and meetings.</td></tr>
+        <tr><td><code>--chat-files-folder</code></td><td><code>TEAMS_CHAT_FILES_FOLDER</code></td><td><code>Microsoft Teams Chat Files</code></td><td>OneDrive folder for chat uploads. Teams localizes it, so use your language's name if it differs.</td></tr>
+        <tr><td><code>--browser</code></td><td><code>TEAMS_BROWSER</code></td><td><code>chrome</code></td><td>Browser for sign-in: <code>chrome</code> or <code>msedge</code>.</td></tr>
+        <tr><td><code>--session-file</code></td><td><code>TEAMS_SESSION_FILE</code></td><td><code>data/session.json</code></td><td>Optional: store the session elsewhere.</td></tr>
+        <tr><td><code>--endpoints-file</code></td><td><code>TEAMS_ENDPOINTS_FILE</code></td><td><code>data/endpoints.json</code></td><td>Optional: use your own endpoint registry.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Finding region and partition</h3>
+  <p>Open Teams in the browser, open DevTools on the Network tab and click into a chat. A request to <code>…/api/chatsvc/<em>region</em>/v1/…</code> shows the region, a request to <code>…/api/mt/part/<em>partition</em>/…</code> shows the partition.</p>
+
+  <h2 id="clients">Connect your MCP client</h2>
+  <p>Run it directly to try your settings:</p>
+<pre><code>node dist/index.js --onedrive-host contoso-my.sharepoint.com --region emea --partition emea-02</code></pre>
+  <p>Claude Code:</p>
+<pre><code>claude mcp add teams -- node /absolute/path/TeamsBridgeMCP/dist/index.js \
+  --onedrive-host contoso-my.sharepoint.com --region emea --partition emea-02</code></pre>
+  <p>Claude Desktop and most other clients, with flags:</p>
+<pre><code>{
+  "mcpServers": {
+    "teams": {
+      "command": "node",
+      "args": [
+        "/absolute/path/TeamsBridgeMCP/dist/index.js",
+        "--onedrive-host", "contoso-my.sharepoint.com",
+        "--region", "emea",
+        "--partition", "emea-02"
+      ]
+    }
+  }
+}</code></pre>
+  <p>Or with environment variables, if your client prefers <code>env</code>:</p>
+<pre><code>{
+  "mcpServers": {
+    "teams": {
+      "command": "node",
+      "args": ["/absolute/path/TeamsBridgeMCP/dist/index.js"],
+      "env": { "TEAMS_ONEDRIVE_HOST": "contoso-my.sharepoint.com", "TEAMS_BROWSER": "msedge" }
+    }
+  }
+}</code></pre>
+  <p><code>contoso-my.sharepoint.com</code> is a placeholder for your own OneDrive host. An unknown flag stops the server with an error, so a typo shows up right away. Then ask your agent to call <code>teams_status</code>.</p>
+
+  <h2 id="security">Security model</h2>
+  <ul>
+    <li><strong>Same rights as you.</strong> The server acts with your account's permissions. It cannot see chats, teams or files you could not open yourself.</li>
+    <li><strong>Secrets stay local.</strong> <code>data/session.json</code> (mode 0600), the browser profile and <code>captures/</code> are gitignored and never leave your computer except as requests to Microsoft.</li>
+    <li><strong>No third party in between.</strong> There is no hosted backend. Requests go straight from your machine to Microsoft 365.</li>
+    <li><strong>Agents act in your name.</strong> Messages from others are input your agent reads. Keep tool approval on in your MCP client for <code>send_message</code>, <code>upload_file</code> and <code>start_chat</code>, so a crafted message cannot make the agent post or share files without you seeing it.</li>
+    <li><strong>Leaked session?</strong> Sign out of Teams on all devices or reset your password. That invalidates the stored tokens.</li>
+  </ul>
+
+  <h2 id="registry">When Microsoft changes something</h2>
+  <p>Every request the server makes is one entry in <code>data/endpoints.json</code>. If a tool starts failing with HTTP 404 or 410, start Chrome with <code>--remote-debugging-port=9222</code>, run <code>npm run capture</code>, repeat the action in Teams and copy the new request into that entry. Placeholders like <code>${TEAMS_REGION}</code> keep tenant values out of the file. The <a href="https://github.com/GodModeAI2025/TeamsBridgeMCP#when-an-endpoint-breaks-capture-workflow">README</a> walks through it step by step.</p>
+
+  <h2 id="faq">FAQ</h2>
+  <details>
+    <summary>Does it have to be Chrome?</summary>
+    <p>No. Any installed Chrome or Edge works (<code>--browser msedge</code>). A real browser is needed because sign-in, MFA and conditional access happen in Microsoft's own pages. The server never sees your password.</p>
+  </details>
+  <details>
+    <summary>Does my data go anywhere else?</summary>
+    <p>No. The server runs locally and talks only to Microsoft 365. What your AI agent does with the results depends on the agent and model you connect.</p>
+  </details>
+  <details>
+    <summary>What happens when Teams updates?</summary>
+    <p>Usually nothing. If Microsoft moves an endpoint, the affected tool reports an HTTP error and you update one JSON entry. The server never guesses endpoints.</p>
+  </details>
+  <details>
+    <summary>Can it join or record meetings?</summary>
+    <p>No. It lists meetings with time, organizer and join link. Joining, audio and recording are out of scope.</p>
+  </details>
+  <details>
+    <summary>Real-time notifications?</summary>
+    <p>Not yet. Reads are pull-based: the agent asks, the server fetches.</p>
+  </details>
+
+  <h2 id="use">Responsible use</h2>
+  <div class="note">
+    <p><strong>Undocumented API.</strong> The endpoints are internal to the Teams web client. Microsoft can change them at any time and does not support this use. The software comes as is, without warranty, under the Apache License 2.0.</p>
+    <p><strong>Your account, your rules.</strong> Use it only with an account you are allowed to automate. On a work or school tenant, check your organization's IT and acceptable-use policies first, or ask your administrator.</p>
+    <p><strong>Respect others.</strong> Chats contain other people's messages and personal data. Do not use the tool to collect, export or monitor conversations beyond what you would do by hand.</p>
+  </div>
+
+  <h2 id="legal">Legal background</h2>
+  <p>This section explains why the author considers publishing this project lawful. It is provided for transparency only and is not legal advice.</p>
+  <ul>
+    <li><strong>Interfaces are not protected as such.</strong> Under EU law, the functionality of a computer program, its programming language and its data formats are not protected by copyright (Court of Justice of the European Union, judgment of 2 May 2012, SAS Institute, C-406/10). This project describes and uses interfaces. It does not copy any part of Microsoft's software.</li>
+    <li><strong>Observing a program is permitted.</strong> A lawful user may observe, study and test the functioning of a program in order to determine the ideas and principles behind it, while running it as intended (Art. 5(3) Directive 2009/24/EC, implemented in Germany as § 69d(3) UrhG). The endpoints were identified by observing the network traffic of the Teams web client during normal, authorized use. No code was decompiled or disassembled.</li>
+    <li><strong>Reverse engineering of available products is permitted.</strong> Acquiring information by observing, studying or testing a product that has been made available to the public is lawful (Art. 3(1)(b) Directive (EU) 2016/943, implemented in Germany as § 3(1) No. 2 GeschGehG).</li>
+    <li><strong>No protection measures are circumvented.</strong> The software only uses the session the user establishes by signing in with their own account in a regular browser. It grants no additional rights and works only with the permissions that account already has.</li>
+    <li><strong>Contractual terms remain the user's responsibility.</strong> Terms of service of Microsoft and the policies of the organization that manages a tenant may restrict automated access. They bind the user of an account, not the publication of this source code. Each user is responsible for checking that their use complies with the terms and policies that apply to them.</li>
+  </ul>
+
+  <h2 id="private">Private project</h2>
+  <p>TeamsBridgeMCP is a private project. The author created it entirely in their own time, with their own equipment and resources, on their own initiative. It was not created in the course of any employment, as part of any job duties, or on behalf of or commissioned by any employer, client or other organization. It contains no code, data, documents or confidential information belonging to any employer or client. No employer or organization owns, maintains, endorses or is responsible for this project.</p>
+
+  <h2 id="trademarks">Trademarks</h2>
+  <p>Microsoft, Microsoft Teams, Microsoft 365, Microsoft Edge, Entra ID, OneDrive and SharePoint are trademarks of the Microsoft group of companies. Chrome is a trademark of Google LLC. These names appear here only to describe what this software works with. TeamsBridgeMCP is an independent open-source project and is not affiliated with, sponsored or endorsed by Microsoft or Google. It contains no Microsoft logos, icons or code.</p>
+
+  <footer>
+    <p>Apache License 2.0 · <a href="https://github.com/GodModeAI2025/TeamsBridgeMCP">Source on GitHub</a> · <a href="https://godmodeai2025.github.io/MarkZimmermann/">Impressum / Legal notice</a></p>
+  </footer>
+</main>
+</body>
+</html>

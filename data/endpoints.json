@@ -1,0 +1,195 @@
+{
+  "version": 1,
+  "updated": "2026-10-29T14:00:00.000Z",
+  "endpoints": {
+    "chats.list": {
+      "method": "GET",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=50",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "notes": "chatsvc conversation list, newest first; CSA v3 /updates needs a syncToken, CSA v2 /teams/users/me works but is ~2.5 MB"
+    },
+    "messages.list": {
+      "method": "GET",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/users/ME/conversations/{conversationId}/messages?view=msnp24Equivalent&pageSize=50",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "params": [
+        {
+          "name": "conversationId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "chatsvc; '48:notes' = chat with yourself"
+    },
+    "messages.send": {
+      "method": "POST",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/users/ME/conversations/{conversationId}/messages",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "bodyType": "json",
+      "params": [
+        {
+          "name": "conversationId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "body built by send_message tool (content/messagetype/contenttype/clientmessageid)"
+    },
+    "users.profiles": {
+      "method": "POST",
+      "url": "https://teams.cloud.microsoft/api/mt/part/${TEAMS_PARTITION}/beta/users/fetchShortProfile?isMailAddress=false&enableGuest=true&skypeTeamsInfo=true",
+      "auth": "bearer",
+      "tokenSource": "https://api.spaces.skype.com",
+      "bodyType": "json",
+      "notes": "body: [\"8:orgid:<objectId>\", ...] -> value[].displayName"
+    },
+    "files.download": {
+      "method": "GET",
+      "url": "https://{host}/_api/v2.1/shares/{shareId}/driveItem/content",
+      "auth": "bearer",
+      "tokenSource": "00000003-0000-0ff1-ce00-000000000000",
+      "params": [
+        {
+          "name": "host",
+          "in": "path",
+          "required": true
+        },
+        {
+          "name": "shareId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "SharePoint shares API; shareId = 'u!' + base64url(objectUrl from message properties.files); token lives ~1 h"
+    },
+    "files.upload": {
+      "method": "PUT",
+      "url": "https://${TEAMS_ONEDRIVE_HOST}/_api/v2.0/me/drive/root:/${TEAMS_CHAT_FILES_FOLDER}/{name}:/content?@microsoft.graph.conflictBehavior=rename",
+      "auth": "bearer",
+      "tokenSource": "00000003-0000-0ff1-ce00-000000000000",
+      "bodyType": "binary",
+      "params": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "own OneDrive chat-files folder, as Teams does; rename avoids overwriting earlier shared files"
+    },
+    "files.item": {
+      "method": "GET",
+      "url": "https://${TEAMS_ONEDRIVE_HOST}/_api/v2.0/me/drive/items/{itemId}?$select=id,name,webUrl,sharepointIds",
+      "auth": "bearer",
+      "tokenSource": "00000003-0000-0ff1-ce00-000000000000",
+      "params": [
+        {
+          "name": "itemId",
+          "in": "path",
+          "required": true
+        }
+      ]
+    },
+    "files.invite": {
+      "method": "POST",
+      "url": "https://${TEAMS_ONEDRIVE_HOST}/_api/v2.0/me/drive/items/{itemId}/invite",
+      "auth": "bearer",
+      "tokenSource": "00000003-0000-0ff1-ce00-000000000000",
+      "bodyType": "json",
+      "params": [
+        {
+          "name": "itemId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "body: recipients[{objectId}], roles [read], sendInvitation false"
+    },
+    "threads.get": {
+      "method": "GET",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/threads/{conversationId}?view=msnp24Equivalent",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "params": [
+        {
+          "name": "conversationId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "members[].id: 8:orgid:<objectId> = people, 28:... = bots"
+    },
+    "channels.list": {
+      "method": "GET",
+      "url": "https://teams.cloud.microsoft/api/csa/${TEAMS_REGION}/api/v2/teams/users/me?isPrefetch=false&enableMembershipSummary=true",
+      "auth": "bearer",
+      "tokenSource": "https://chatsvcagg.teams.microsoft.com",
+      "notes": "CSA v2: teams[].channels[] (and chats[]); ~2.5 MB, tool returns a compact view"
+    },
+    "messages.reply": {
+      "method": "POST",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/users/ME/conversations/{conversationId};messageid={replyToMessageId}/messages",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "bodyType": "json",
+      "params": [
+        {
+          "name": "conversationId",
+          "in": "path",
+          "required": true
+        },
+        {
+          "name": "replyToMessageId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "channel thread reply; replyToMessageId = id of the thread's root post"
+    },
+    "search.messages": {
+      "method": "POST",
+      "url": "https://substrate.office.com/searchservice/api/v2/query",
+      "auth": "bearer",
+      "tokenSource": "66a88757-258c-4c72-893c-3e8bed4d6899",
+      "bodyType": "json",
+      "notes": "body needs EntityRequests + cvid + logicalId + scenario; token only issued after a search in the app (login triggers one)"
+    },
+    "meetings.list": {
+      "method": "GET",
+      "url": "https://teams.cloud.microsoft/api/mt/part/${TEAMS_PARTITION}/v2.0/me/calendars/default/calendarView",
+      "auth": "bearer",
+      "tokenSource": "https://api.spaces.skype.com",
+      "params": [
+        {
+          "name": "StartDate",
+          "in": "query",
+          "required": true
+        },
+        {
+          "name": "EndDate",
+          "in": "query",
+          "required": true
+        }
+      ]
+    },
+    "users.byMail": {
+      "method": "POST",
+      "url": "https://teams.cloud.microsoft/api/mt/part/${TEAMS_PARTITION}/beta/users/fetchShortProfile?isMailAddress=true&enableGuest=true",
+      "auth": "bearer",
+      "tokenSource": "https://api.spaces.skype.com",
+      "bodyType": "json",
+      "notes": "body: [\"name@domain\", ...] -> value[].objectId"
+    },
+    "threads.create": {
+      "method": "POST",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/threads",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "bodyType": "json",
+      "notes": "new chat; Location header ends with the thread id. 1:1 with uniquerosterthread returns the existing chat"
+    }
+  }
+}

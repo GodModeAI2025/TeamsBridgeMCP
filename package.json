@@ -1,0 +1,43 @@
+{
+  "name": "teams-bridge-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Microsoft Teams via the web client's internal REST API (no Microsoft Graph, no app registration)",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "npm run build && node scripts/smoke.mjs",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "capture": "tsx scripts/capture.ts",
+    "export-session": "tsx scripts/export-session.ts",
+    "mark": "tsx scripts/mark.ts",
+    "login": "tsx scripts/login.ts"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "teams",
+    "microsoft-teams"
+  ],
+  "author": "GodModeAI2025",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "playwright-core": "^1.64.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GodModeAI2025/TeamsBridgeMCP.git"
+  },
+  "homepage": "https://godmodeai2025.github.io/TeamsBridgeMCP/",
+  "engines": {
+    "node": ">=20"
+  }
+}

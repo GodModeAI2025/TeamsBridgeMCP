@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/session.json
+data/browser-profile/
+captures/
+*.log
+.DS_Store
