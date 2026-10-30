@@ -26,9 +26,15 @@ const URL_DEFAULTS: Record<string, string> = {
   TEAMS_CHAT_FILES_FOLDER: "Microsoft Teams Chat Files",
 };
 
+// Values the login read from the Teams client's traffic; flags and environment still win
+let detected: Record<string, string> = {};
+export function setDetected(values: Record<string, string>): void {
+  detected = values;
+}
+
 export function expandUrl(url: string): string {
   return url.replace(/\$\{(\w+)\}/g, (_, name: string) => {
-    const v = process.env[name] || URL_DEFAULTS[name];
+    const v = process.env[name] || detected[name] || URL_DEFAULTS[name];
     if (!v) throw new RegistryError(`environment variable ${name} is not set (see README, "Configuration")`);
     return v;
   });

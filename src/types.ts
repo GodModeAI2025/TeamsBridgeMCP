@@ -12,6 +12,8 @@ export interface SessionExport {
   cookies: Cookie[];
   /** Bearer tokens captured from the Teams app at login, keyed by JWT audience */
   tokens?: Record<string, string>;
+  /** Region, partition and OneDrive host seen in the client's requests at login, keyed like the registry placeholders */
+  detected?: Record<string, string>;
   exportedAt: string;
   source?: string;
 }

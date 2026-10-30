@@ -14,12 +14,14 @@ export const COOKIE_DOMAINS = [
   "https://office.com",
 ];
 
+const SHAREPOINT_AUDIENCE = "00000003-0000-0ff1-ce00-000000000000";
+
 // Token audiences the registry endpoints use as tokenSource: chats/messages (chatsvc), profiles, files (SharePoint)
 export const REQUIRED_AUDIENCES = [
   "https://ic3.teams.office.com",
   "https://chatsvcagg.teams.microsoft.com",
   "https://api.spaces.skype.com",
-  "00000003-0000-0ff1-ce00-000000000000",
+  SHAREPOINT_AUDIENCE,
 ];
 
 // Substrate search token: the app only requests it once the user searches
@@ -41,6 +43,23 @@ export function bearerAudience(header: string | undefined): string | undefined {
 }
 
 /**
+ * Tenant values the registry needs as ${NAME}, read from the Teams client's own requests:
+ * chat service region, middle-tier partition, and the OneDrive host (the request that carries the SharePoint token).
+ */
+export function detectTenantValues(url: string, aud?: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const region = url.match(/\/api\/chatsvc\/([a-z]+)\/v1\//)?.[1];
+  if (region) out.TEAMS_REGION = region;
+  const partition = url.match(/\/api\/mt\/part\/([a-z0-9-]+)\//)?.[1];
+  if (partition) out.TEAMS_PARTITION = partition;
+  if (aud === SHAREPOINT_AUDIENCE) {
+    const host = new URL(url).hostname;
+    if (host.endsWith("-my.sharepoint.com")) out.TEAMS_ONEDRIVE_HOST = host;
+  }
+  return out;
+}
+
+/**
  * Opens Chrome on Teams, waits until the app has sent requests carrying the required bearer tokens,
  * then writes cookies + tokens to `out`.
  */
@@ -54,10 +73,12 @@ export async function browserLogin(
     viewport: null,
   });
   const tokens: Record<string, string> = {};
+  const detected: Record<string, string> = {};
   ctx.on("request", (req) => {
     const auth = req.headers()["authorization"];
     const aud = bearerAudience(auth);
     if (aud) tokens[aud] = auth.slice("Bearer ".length);
+    Object.assign(detected, { ...detectTenantValues(req.url(), aud), ...detected });
   });
   try {
     const page = ctx.pages()[0] ?? (await ctx.newPage());
@@ -88,7 +109,7 @@ export async function browserLogin(
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(
       out,
-      JSON.stringify({ cookies, tokens, exportedAt: new Date().toISOString(), source: "playwright-login" }, null, 2),
+      JSON.stringify({ cookies, tokens, detected, exportedAt: new Date().toISOString(), source: "playwright-login" }, null, 2),
     );
     fs.chmodSync(out, 0o600);
     return { tokenAudiences: Object.keys(tokens).sort(), out };

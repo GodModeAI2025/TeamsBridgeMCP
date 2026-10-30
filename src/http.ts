@@ -82,12 +82,15 @@ export async function apiRequest(
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 60000);
   try {
     const res = await fetch(url, { ...init, signal: ctrl.signal });
-    if (res.status === 401 || res.status === 403) {
-      const bodyText = (await res.text()).slice(0, 400);
+    if (res.status === 401) {
+      throw new ApiError(401, "HTTP 401: token rejected or expired", (await res.text()).slice(0, 400));
+    }
+    // 403 is not a login problem: signing in again does not help, so the caller must not retry with a new token
+    if (res.status === 403) {
       throw new ApiError(
-        res.status,
-        `HTTP ${res.status}: not authorized (expired session or missing permission)`,
-        bodyText,
+        403,
+        "HTTP 403: forbidden (no access to this conversation or resource, or wrong region/partition)",
+        (await res.text()).slice(0, 400),
       );
     }
     if (!res.ok) {

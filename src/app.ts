@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { registryFile, sessionFile } from "./config.js";
-import { loadRegistry } from "./registry.js";
+import { loadRegistry, setDetected } from "./registry.js";
 import { loadSession, SessionError, SessionState } from "./session.js";
 import { EndpointRegistry } from "./types.js";
 
@@ -21,6 +21,7 @@ export class App {
     const m = mtime(sessionFile());
     if (this.session?.mtime !== m) {
       this.session = { state: loadSession(sessionFile()), mtime: m };
+      setDetected(this.session.state.detected);
     }
     return this.session.state;
   }
@@ -30,6 +31,12 @@ export class App {
   }
 
   getRegistry(): EndpointRegistry {
+    // endpoint URLs are expanded with the session's detected tenant values, so load the session first if there is one
+    try {
+      this.getSession();
+    } catch {
+      // no session yet: defaults and flags apply
+    }
     const m = mtime(registryFile());
     if (this.registry?.mtime !== m) {
       this.registry = { reg: loadRegistry(registryFile()), mtime: m };
@@ -50,6 +57,7 @@ export class App {
         cookieCount: s.cookies.length,
         cookieNames: s.cookieNames(),
         tokenAudiences: s.tokenAudiences(),
+        detected: s.detected,
       };
     } catch (e) {
       return { present: true, path: f, error: (e as Error).message };

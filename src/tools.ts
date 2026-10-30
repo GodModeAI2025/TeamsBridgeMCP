@@ -9,6 +9,7 @@ import { sessionFile } from "./config.js";
 import { browserLogin } from "./login.js";
 import { ApiResponse } from "./types.js";
 import { SessionError } from "./session.js";
+import { htmlToText, MENTION_RE, Person, toTeamsHtml } from "./format.js";
 
 function ok(data: unknown) {
   const text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
@@ -116,6 +117,20 @@ export function registerTools(server: McpServer, app: App): void {
     });
   }
 
+  // markdown subset -> Teams HTML; "@name@contoso.com" becomes a mention of that person
+  async function htmlBody(text: string): Promise<Record<string, unknown>> {
+    const emails = [...new Set([...text.matchAll(MENTION_RE)].map((m) => m[1].toLowerCase()))];
+    const people = new Map<string, Person>();
+    if (emails.length) {
+      const profiles = ((await call("users.byMail", { body: emails })).json as { value?: any[] })?.value ?? [];
+      for (const p of profiles) if (p.objectId) people.set(String(p.email).toLowerCase(), p);
+      const missing = emails.filter((e) => !people.has(e));
+      if (missing.length) throw new Error(`unknown user(s) to mention: ${missing.join(", ")}`);
+    }
+    const { content, mentions } = toTeamsHtml(text, people);
+    return { content, messagetype: "RichText/Html", ...(mentions.length ? { properties: { mentions: JSON.stringify(mentions) } } : {}) };
+  }
+
   // 1:1 chats have no topic; Teams shows the other person's name, encoded as the second GUID in the chat ID
   async function oneOnOneNames(chatIds: string[]): Promise<Map<string, string>> {
     const names = new Map<string, string>();
@@ -192,7 +207,7 @@ export function registerTools(server: McpServer, app: App): void {
             type: c.threadProperties?.threadType ?? c.type,
             lastMessageAt: c.lastMessage?.composetime,
             lastFrom: c.lastMessage?.imdisplayname,
-            lastText: String(c.lastMessage?.content ?? "").replace(/<[^>]+>/g, "").slice(0, 120),
+            lastText: htmlToText(String(c.lastMessage?.content ?? "")).slice(0, 120),
           })),
         );
       } catch (e) {
@@ -246,7 +261,7 @@ export function registerTools(server: McpServer, app: App): void {
               id: m.id,
               from: m.imdisplayname,
               at: m.composetime,
-              text: String(m.content ?? "").replace(/<[^>]+>/g, "").slice(0, 2000),
+              text: htmlToText(String(m.content ?? "")).slice(0, 2000),
               files: messageFiles(m),
             })),
         );
@@ -258,18 +273,63 @@ export function registerTools(server: McpServer, app: App): void {
 
   server.tool(
     "send_message",
-    "Send a message to a chat or channel; in channels pass replyToMessageId (the thread's root post id) to reply in that thread",
+    "Send a message to a chat or channel; in channels pass replyToMessageId (the thread's root post id) to reply in that thread. Returns the new messageId (for edit_message/react_message).",
     {
       conversationId: z.string().describe("Conversation ID from list_chats, list_channels or start_chat"),
-      text: z.string().min(1).describe("Message text (markdown as supported by Teams)"),
+      text: z
+        .string()
+        .min(1)
+        .describe("Message text. Markdown subset: **bold**, *italic*, ~~strike~~, `code`, [text](https://...), - or 1. lists. Mention a person with @their-email, e.g. @alex@contoso.com"),
       kind: z.enum(["channel", "chat"]).default("channel"),
       replyToMessageId: z.string().optional(),
     },
     async ({ conversationId, text, kind, replyToMessageId }) => {
       try {
         const key = replyToMessageId ? "messages.reply" : "messages.send";
-        const res = await postMessage(conversationId, key, { content: text, messagetype: "Text" }, replyToMessageId);
-        return ok(payload(res));
+        const res = await postMessage(conversationId, key, await htmlBody(text), replyToMessageId);
+        return ok({ messageId: res.headers.get("location")?.split("/").pop(), ...(payload(res) as object) });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "edit_message",
+    "Replace the text of one of your own messages (messageId from send_message or list_messages)",
+    {
+      conversationId: z.string(),
+      messageId: z.string(),
+      text: z.string().min(1).describe("New text, same markdown and @email mentions as send_message"),
+    },
+    async ({ conversationId, messageId, text }) => {
+      try {
+        const res = await call("messages.edit", {
+          params: { conversationId, messageId },
+          body: { contenttype: "text", ...(await htmlBody(text)), id: messageId, type: "Message", conversationid: conversationId },
+        });
+        return ok({ edited: messageId, status: res.status });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "react_message",
+    "Add a reaction to a message",
+    {
+      conversationId: z.string(),
+      messageId: z.string(),
+      reaction: z.enum(["like", "heart", "laugh", "surprised", "sad", "angry"]).default("like"),
+    },
+    async ({ conversationId, messageId, reaction }) => {
+      try {
+        const res = await call("messages.react", {
+          params: { conversationId, messageId },
+          body: { emotions: { key: reaction, value: Date.now() } },
+        });
+        return ok({ reacted: reaction, status: res.status });
       } catch (e) {
         return fail(e);
       }

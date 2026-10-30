@@ -1,12 +1,37 @@
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
-import { expandUrl } from "../dist/registry.js";
+import { expandUrl, setDetected } from "../dist/registry.js";
+import { htmlToText, toTeamsHtml } from "../dist/format.js";
+import { detectTenantValues } from "../dist/login.js";
 
 process.env.TEAMS_ONEDRIVE_HOST = "contoso-my.sharepoint.com";
 assert.equal(expandUrl("https://${TEAMS_ONEDRIVE_HOST}/x?$select=id"), "https://contoso-my.sharepoint.com/x?$select=id");
 assert.equal(expandUrl("https://h/${TEAMS_REGION}/{conversationId}"), "https://h/emea/{conversationId}");
 delete process.env.TEAMS_ONEDRIVE_HOST;
 assert.throws(() => expandUrl("https://${TEAMS_ONEDRIVE_HOST}/"), /TEAMS_ONEDRIVE_HOST/);
+
+// tenant values from login traffic: flag/env > detected > default
+setDetected({ TEAMS_REGION: "amer" });
+assert.equal(expandUrl("https://h/${TEAMS_REGION}"), "https://h/amer");
+process.env.TEAMS_REGION = "apac";
+assert.equal(expandUrl("https://h/${TEAMS_REGION}"), "https://h/apac");
+delete process.env.TEAMS_REGION;
+setDetected({});
+assert.deepEqual(detectTenantValues("https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME"), { TEAMS_REGION: "amer" });
+assert.deepEqual(detectTenantValues("https://teams.cloud.microsoft/api/mt/part/amer-03/beta/me"), { TEAMS_PARTITION: "amer-03" });
+assert.deepEqual(detectTenantValues("https://contoso-my.sharepoint.com/_api/x", "00000003-0000-0ff1-ce00-000000000000"), { TEAMS_ONEDRIVE_HOST: "contoso-my.sharepoint.com" });
+assert.deepEqual(detectTenantValues("https://contoso.sharepoint.com/_api/x", "00000003-0000-0ff1-ce00-000000000000"), {});
+
+// markdown subset -> Teams HTML, escaped, links only http(s)/mailto
+assert.equal(toTeamsHtml("**fett** und *kursiv* und ~~weg~~").content, "<p><b>fett</b> und <i>kursiv</i> und <s>weg</s></p>");
+assert.equal(toTeamsHtml("a <b> & `x_y_z`").content, "<p>a &lt;b&gt; &amp; <code>x_y_z</code></p>");
+assert.equal(toTeamsHtml("[docs](https://a.com/x_y_z) [bad](javascript:alert(1))").content, '<p><a href="https://a.com/x_y_z">docs</a> [bad](javascript:alert(1))</p>');
+assert.equal(toTeamsHtml("Liste:\n- eins\n- zwei\n\n1. a\n2. b").content, "<p>Liste:</p><ul><li>eins</li><li>zwei</li></ul><ol><li>a</li><li>b</li></ol>");
+assert.equal(toTeamsHtml("zeile1\nzeile2").content, "<p>zeile1<br>zeile2</p>");
+const m = toTeamsHtml("hi @alex_b@contoso.com", new Map([["alex_b@contoso.com", { objectId: "1111", displayName: "Alex <B>" }]]));
+assert.equal(m.content, '<p>hi <span itemscope itemtype="http://schema.skype.com/Mention" itemid="0">Alex &lt;B&gt;</span></p>');
+assert.equal(m.mentions[0].mri, "8:orgid:1111");
+assert.equal(htmlToText("<p>a &amp; b</p><p>c<br>d</p><ul><li>x</li></ul>"), "a & b\nc\nd\n- x");
 
 const child = process.argv[2] ? spawn(process.execPath, [process.argv[2]]) : spawn("node", ["dist/index.js"]);
 let buf = "";

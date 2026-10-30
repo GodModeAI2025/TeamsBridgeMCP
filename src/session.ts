@@ -9,6 +9,7 @@ export interface SessionState {
   token(name: string): string | undefined;
   cookieNames(): string[];
   tokenAudiences(): string[];
+  detected: Record<string, string>;
 }
 
 export function loadSession(file: string): SessionState {
@@ -31,6 +32,7 @@ export function loadSession(file: string): SessionState {
 
   return {
     cookies,
+    detected: raw.detected ?? {},
     cookieHeaderFor(origin: string): string {
       const host = new URL(origin).hostname;
       return cookies

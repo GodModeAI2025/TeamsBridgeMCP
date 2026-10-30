@@ -17,7 +17,9 @@ Landing page with architecture diagram: https://godmodeai2025.github.io/TeamsBri
 | `list_chats` | Recent chats, meeting chats and channels, newest first |
 | `list_channels` | Your teams and their channels |
 | `list_messages` | Messages of a chat or channel, including attached files |
-| `send_message` | Send to a chat or channel; `replyToMessageId` replies in a channel thread |
+| `send_message` | Send to a chat or channel; `replyToMessageId` replies in a channel thread. Markdown (bold, italic, strike, code, links, lists) becomes Teams formatting, `@name@contoso.com` mentions that person. Returns the `messageId` |
+| `edit_message` | Change the text of one of your messages |
+| `react_message` | Add a reaction (like, heart, laugh, surprised, sad, angry) |
 | `start_chat` | Start or reopen a chat by e-mail address |
 | `search_messages` | Search across chats and channels |
 | `upload_file` | Upload a local file to your OneDrive and post it into a chat |
@@ -44,34 +46,33 @@ Prefer Edge? `TEAMS_BROWSER=msedge npm run login`, and pass `--browser msedge` t
 
 `npm run login` writes `data/session.json` (mode 0600, gitignored) and keeps a browser profile in `data/browser-profile/` so later sign-ins usually need no password. You can also call the `teams_login` tool from your agent instead.
 
-Expired tokens (chat about 24 h, files about 1 h) are refreshed by the server itself with a headless sign-in. Only when Microsoft asks for password or MFA does it open the Chrome window again.
+Expired tokens (chat about 24 h, files about 1 h) are refreshed by the server itself with a headless sign-in. Only when Microsoft asks for password or MFA does it open the Chrome window again. HTTP 403 is passed through unchanged: it means no access to that chat or a wrong region, and a new sign-in would not help.
 
 ## Configuration
 
-Pass settings as command-line flags or as environment variables. Flags win over the environment. Everything except the OneDrive host has a default.
+Usually nothing to configure. At sign-in the server reads the chat region, the partition and your OneDrive host from the Teams client's own requests and stores them with the session; `teams_status` shows them. Flags or environment variables override the detected values, flags win over the environment.
 
 | Flag | Variable | Default | When to change it |
 |---|---|---|---|
-| `--onedrive-host` | `TEAMS_ONEDRIVE_HOST` | none | Required for `upload_file`. Your OneDrive host, e.g. `contoso-my.sharepoint.com`. Open OneDrive in the browser and copy the host from the address bar. |
-| `--region` | `TEAMS_REGION` | `emea` | Chat service region of your tenant. Tenants outside Europe typically use `amer` or `apac`. |
-| `--partition` | `TEAMS_PARTITION` | `emea-02` | Middle-tier partition used for profiles and meetings. Copy it from DevTools (see below). |
+| `--onedrive-host` | `TEAMS_ONEDRIVE_HOST` | detected at sign-in | Your OneDrive host for `upload_file`, e.g. `contoso-my.sharepoint.com`. Set it only if detection fails: open OneDrive in the browser and copy the host from the address bar. |
+| `--region` | `TEAMS_REGION` | detected, else `emea` | Chat service region of your tenant, e.g. `emea`, `amer` or `apac`. |
+| `--partition` | `TEAMS_PARTITION` | detected, else `emea-02` | Middle-tier partition used for profiles and meetings. |
 | `--chat-files-folder` | `TEAMS_CHAT_FILES_FOLDER` | `Microsoft Teams Chat Files` | OneDrive folder Teams uses for chat uploads. It is localized, e.g. `Microsoft Teams-Chatdateien` in German. |
 | `--browser` | `TEAMS_BROWSER` | `chrome` | Browser for sign-in: `chrome` or `msedge` |
 | `--session-file` | `TEAMS_SESSION_FILE` | `data/session.json` | Different session location |
 | `--endpoints-file` | `TEAMS_ENDPOINTS_FILE` | `data/endpoints.json` | Your own registry file |
 
-How to find region and partition: open Teams in the browser, open DevTools (Network tab), click into a chat. Requests to `.../api/chatsvc/<region>/v1/...` show the region, requests to `.../api/mt/part/<partition>/...` show the partition.
+Finding region and partition by hand is only needed after `npm run export-session` (that path does not detect them) or when every chat returns HTTP 403, which is how a wrong region shows up. Open Teams in the browser, open DevTools (Network tab), click into a chat. Requests to `.../api/chatsvc/<region>/v1/...` show the region, requests to `.../api/mt/part/<partition>/...` show the partition.
 
 ### Register with an MCP client
 
-Claude Code, with flags:
+Claude Code:
 
 ```bash
-claude mcp add teams -- node /absolute/path/TeamsBridgeMCP/dist/index.js \
-  --onedrive-host contoso-my.sharepoint.com --region emea --partition emea-02
+claude mcp add teams -- node /absolute/path/TeamsBridgeMCP/dist/index.js
 ```
 
-Claude Desktop (`claude_desktop_config.json`) and most other clients, with flags:
+Claude Desktop (`claude_desktop_config.json`) and most other clients, here with a flag that overrides a detected value:
 
 ```json
 {
@@ -80,9 +81,7 @@ Claude Desktop (`claude_desktop_config.json`) and most other clients, with flags
       "command": "node",
       "args": [
         "/absolute/path/TeamsBridgeMCP/dist/index.js",
-        "--onedrive-host", "contoso-my.sharepoint.com",
-        "--region", "emea",
-        "--partition", "emea-02"
+        "--region", "emea"
       ]
     }
   }
@@ -97,13 +96,13 @@ The same with environment variables:
     "teams": {
       "command": "node",
       "args": ["/absolute/path/TeamsBridgeMCP/dist/index.js"],
-      "env": { "TEAMS_ONEDRIVE_HOST": "contoso-my.sharepoint.com" }
+      "env": { "TEAMS_BROWSER": "msedge" }
     }
   }
 }
 ```
 
-`contoso-my.sharepoint.com` is a placeholder, replace it with your own host. An unknown flag stops the server with an error, so typos show up right away.
+An unknown flag stops the server with an error, so typos show up right away.
 
 ## Test
 
@@ -161,7 +160,7 @@ Tools report `HTTP 404/410` or auth errors when Microsoft moved an endpoint. Re-
 - `data/session.json` holds your full Teams session. Never commit or share it. If it leaks, sign out of Teams everywhere or reset your password.
 - `captures/` contains request headers and bodies, including tokens. Gitignored, do not share.
 - The server can do exactly what your signed-in account can do, nothing more.
-- Messages from other people are input your agent reads. Keep tool approval on in your MCP client for `send_message`, `upload_file` and `start_chat`, so a crafted message cannot make the agent post or share files unseen.
+- Messages from other people are input your agent reads. Keep tool approval on in your MCP client for `send_message`, `edit_message`, `react_message`, `upload_file` and `start_chat`, so a crafted message cannot make the agent post or share files unseen.
 
 ## Limits
 

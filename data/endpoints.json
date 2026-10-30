@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-29T14:00:00.000Z",
+  "updated": "2026-10-31T00:00:00.000Z",
   "endpoints": {
     "chats.list": {
       "method": "GET",
@@ -190,6 +190,46 @@
       "tokenSource": "https://ic3.teams.office.com",
       "bodyType": "json",
       "notes": "new chat; Location header ends with the thread id. 1:1 with uniquerosterthread returns the existing chat"
+    },
+    "messages.edit": {
+      "method": "PUT",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/users/ME/conversations/{conversationId}/messages/{messageId}",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "bodyType": "json",
+      "params": [
+        {
+          "name": "conversationId",
+          "in": "path",
+          "required": true
+        },
+        {
+          "name": "messageId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "body: send body plus id, type 'Message', conversationid"
+    },
+    "messages.react": {
+      "method": "PUT",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/users/ME/conversations/{conversationId}/messages/{messageId}/properties?name=emotions",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "bodyType": "json",
+      "params": [
+        {
+          "name": "conversationId",
+          "in": "path",
+          "required": true
+        },
+        {
+          "name": "messageId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "body: {emotions:{key:'like',value:<epoch ms>}}"
     }
   }
 }

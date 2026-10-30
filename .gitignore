@@ -5,3 +5,4 @@ data/browser-profile/
 captures/
 *.log
 .DS_Store
+data/spike/
