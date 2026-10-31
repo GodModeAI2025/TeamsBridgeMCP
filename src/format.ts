@@ -23,7 +23,13 @@ function inline(text: string, stash: string[]): string {
   const keep = (html: string) => `\u0001${stash.push(html) - 1}\u0001`;
   let s = esc(text)
     .replace(/`([^`]+)`/g, (_, c) => keep(`<code>${c}</code>`))
-    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)/g, (_, t, u) => keep(`<a href="${u}">${t}</a>`));
+    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)/g, (_, t, u) => keep(`<a href="${u}">${t}</a>`))
+    // bare URLs too, otherwise _ and * inside them turn into emphasis
+    .replace(/https?:\/\/(?:[^\s\u0001&]|&amp;)+/g, (u) => {
+      const tail = u.match(/[.,;:!?)]+$/)?.[0] ?? "";
+      const url = u.slice(0, u.length - tail.length);
+      return keep(`<a href="${url}">${url}</a>`) + tail;
+    });
   s = s
     .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
     .replace(/~~(.+?)~~/g, "<s>$1</s>")
@@ -32,7 +38,7 @@ function inline(text: string, stash: string[]): string {
   return s;
 }
 
-/** Markdown subset to Teams HTML: **bold**, *italic*, ~~strike~~, `code`, [link](https://...), - and 1. lists, paragraphs, line breaks. */
+/** Markdown subset to Teams HTML: **bold**, *italic*, ~~strike~~, `code`, [link](https://...), - lists, paragraphs, line breaks. */
 export function toTeamsHtml(text: string, people: Map<string, Person> = new Map()): { content: string; mentions: Mention[] } {
   const stash: string[] = [];
   const mentions: Mention[] = [];
@@ -48,25 +54,25 @@ export function toTeamsHtml(text: string, people: Map<string, Person> = new Map(
   const html = blocks
     .map((block) => {
       let out = "";
-      let list: "ul" | "ol" | undefined;
+      let list = false;
       const lines: string[] = [];
       const flush = () => {
         if (lines.length) out += `<p>${lines.join("<br>")}</p>`;
         lines.length = 0;
       };
       for (const line of block.split("\n")) {
-        const m = line.match(/^\s*(?:([-*])|\d+[.)])\s+(.*)$/);
-        const kind = m ? (m[1] ? "ul" : "ol") : undefined;
-        if (kind !== list) {
-          if (list) out += `</${list}>`;
+        // no <ol>: it renumbers from 1, so "30. Oktober" would come out as "1. Oktober"
+        const m = line.match(/^\s*[-*]\s+(.*)$/);
+        if (!!m !== list) {
+          if (list) out += "</ul>";
           flush();
-          if (kind) out += `<${kind}>`;
-          list = kind;
+          if (m) out += "<ul>";
+          list = !!m;
         }
-        if (kind) out += `<li>${inline(m![2], stash)}</li>`;
+        if (m) out += `<li>${inline(m[1], stash)}</li>`;
         else lines.push(inline(line, stash));
       }
-      if (list) out += `</${list}>`;
+      if (list) out += "</ul>";
       flush();
       return out;
     })

@@ -18,12 +18,12 @@ Landing page with architecture diagram: https://godmodeai2025.github.io/TeamsBri
 | `list_channels` | Your teams and their channels |
 | `list_messages` | Messages of a chat or channel, including attached files |
 | `send_message` | Send to a chat or channel; `replyToMessageId` replies in a channel thread. Markdown (bold, italic, strike, code, links, lists) becomes Teams formatting, `@name@contoso.com` mentions that person. Returns the `messageId` |
-| `edit_message` | Change the text of one of your messages |
+| `edit_message` | Change the text of one of your messages, attachments stay |
 | `react_message` | Add a reaction (like, heart, laugh, surprised, sad, angry) |
 | `start_chat` | Start or reopen a chat by e-mail address |
 | `search_messages` | Search across chats and channels |
 | `upload_file` | Upload a local file to your OneDrive and post it into a chat |
-| `download_file` | Download a file from a message |
+| `download_file` | Download a file from a message (SharePoint or OneDrive links only, up to 250 MB) |
 | `list_meetings` | Upcoming meetings from your calendar |
 
 ## Requirements

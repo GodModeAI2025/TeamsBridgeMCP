@@ -17,7 +17,11 @@ export function buildUrl(base: string, params?: Record<string, unknown>): string
   for (const [k, v] of Object.entries(params ?? {})) {
     if (v === undefined || v === null) continue;
     const ph = `{${k}}`;
-    if (s.includes(ph)) s = s.replace(ph, encodeURIComponent(String(v)));
+    if (s.includes(ph)) {
+      // encodeURIComponent keeps "." and "..", and the URL parser resolves them (also %2e%2e), so ".." would move the token one path up
+      if (/^\.+$/.test(String(v))) throw new ApiError(0, `invalid ${k}: ${String(v)}`);
+      s = s.replace(ph, encodeURIComponent(String(v)));
+    }
     else rest[k] = v;
   }
   const u = new URL(s);
@@ -32,6 +36,8 @@ interface RequestOptions {
   body?: unknown;
   timeoutMs?: number;
   raw?: boolean;
+  /** raw only: abort once the body grows past this, counted while streaming (chunked responses have no Content-Length) */
+  maxBytes?: number;
 }
 
 export async function apiRequest(
@@ -101,8 +107,17 @@ export async function apiRequest(
     const respHeaders = res.headers;
 
     if (opts.raw) {
-      const buf = Buffer.from(await res.arrayBuffer());
-      return { status: res.status, headers: respHeaders, buffer: buf };
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of res.body ?? []) {
+        size += chunk.length;
+        if (opts.maxBytes && size > opts.maxBytes) {
+          ctrl.abort();
+          throw new ApiError(0, `response larger than ${opts.maxBytes} bytes, aborted`);
+        }
+        chunks.push(Buffer.from(chunk));
+      }
+      return { status: res.status, headers: respHeaders, buffer: Buffer.concat(chunks) };
     }
     const text = await res.text();
     let json: unknown;

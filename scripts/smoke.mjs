@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { expandUrl, setDetected } from "../dist/registry.js";
 import { htmlToText, toTeamsHtml } from "../dist/format.js";
 import { detectTenantValues } from "../dist/login.js";
+import { buildUrl } from "../dist/http.js";
 
 process.env.TEAMS_ONEDRIVE_HOST = "contoso-my.sharepoint.com";
 assert.equal(expandUrl("https://${TEAMS_ONEDRIVE_HOST}/x?$select=id"), "https://contoso-my.sharepoint.com/x?$select=id");
@@ -22,11 +23,17 @@ assert.deepEqual(detectTenantValues("https://teams.cloud.microsoft/api/mt/part/a
 assert.deepEqual(detectTenantValues("https://contoso-my.sharepoint.com/_api/x", "00000003-0000-0ff1-ce00-000000000000"), { TEAMS_ONEDRIVE_HOST: "contoso-my.sharepoint.com" });
 assert.deepEqual(detectTenantValues("https://contoso.sharepoint.com/_api/x", "00000003-0000-0ff1-ce00-000000000000"), {});
 
+// ids made of dots would be resolved as path segments
+assert.throws(() => buildUrl("https://h/a/{id}/b", { id: ".." }), /invalid id/);
+assert.equal(buildUrl("https://h/a/{id}", { id: "19:x@thread.v2" }), "https://h/a/19%3Ax%40thread.v2");
+
 // markdown subset -> Teams HTML, escaped, links only http(s)/mailto
 assert.equal(toTeamsHtml("**fett** und *kursiv* und ~~weg~~").content, "<p><b>fett</b> und <i>kursiv</i> und <s>weg</s></p>");
 assert.equal(toTeamsHtml("a <b> & `x_y_z`").content, "<p>a &lt;b&gt; &amp; <code>x_y_z</code></p>");
 assert.equal(toTeamsHtml("[docs](https://a.com/x_y_z) [bad](javascript:alert(1))").content, '<p><a href="https://a.com/x_y_z">docs</a> [bad](javascript:alert(1))</p>');
-assert.equal(toTeamsHtml("Liste:\n- eins\n- zwei\n\n1. a\n2. b").content, "<p>Liste:</p><ul><li>eins</li><li>zwei</li></ul><ol><li>a</li><li>b</li></ol>");
+assert.equal(toTeamsHtml("Liste:\n- eins\n- zwei\n\n30. Oktober\n2. b").content, "<p>Liste:</p><ul><li>eins</li><li>zwei</li></ul><p>30. Oktober<br>2. b</p>");
+assert.equal(toTeamsHtml("see https://a.com/x_y*z*?a=1&b=2.").content, '<p>see <a href="https://a.com/x_y*z*?a=1&amp;b=2">https://a.com/x_y*z*?a=1&amp;b=2</a>.</p>');
+assert.equal(toTeamsHtml("<https://a.com>").content, '<p>&lt;<a href="https://a.com">https://a.com</a>&gt;</p>');
 assert.equal(toTeamsHtml("zeile1\nzeile2").content, "<p>zeile1<br>zeile2</p>");
 const m = toTeamsHtml("hi @alex_b@contoso.com", new Map([["alex_b@contoso.com", { objectId: "1111", displayName: "Alex <B>" }]]));
 assert.equal(m.content, '<p>hi <span itemscope itemtype="http://schema.skype.com/Mention" itemid="0">Alex &lt;B&gt;</span></p>');

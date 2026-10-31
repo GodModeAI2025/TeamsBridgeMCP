@@ -191,6 +191,25 @@
       "bodyType": "json",
       "notes": "new chat; Location header ends with the thread id. 1:1 with uniquerosterthread returns the existing chat"
     },
+    "messages.get": {
+      "method": "GET",
+      "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/users/ME/conversations/{conversationId}/messages/{messageId}",
+      "auth": "bearer",
+      "tokenSource": "https://ic3.teams.office.com",
+      "params": [
+        {
+          "name": "conversationId",
+          "in": "path",
+          "required": true
+        },
+        {
+          "name": "messageId",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "one message; edit_message reads properties.files from it"
+    },
     "messages.edit": {
       "method": "PUT",
       "url": "https://teams.cloud.microsoft/api/chatsvc/${TEAMS_REGION}/v1/users/ME/conversations/{conversationId}/messages/{messageId}",

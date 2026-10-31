@@ -279,7 +279,7 @@ export function registerTools(server: McpServer, app: App): void {
       text: z
         .string()
         .min(1)
-        .describe("Message text. Markdown subset: **bold**, *italic*, ~~strike~~, `code`, [text](https://...), - or 1. lists. Mention a person with @their-email, e.g. @alex@contoso.com"),
+        .describe("Message text. Markdown subset: **bold**, *italic*, ~~strike~~, `code`, [text](https://...), - lists (numbered lines stay plain text). Mention a person with @their-email, e.g. @alex@contoso.com"),
       kind: z.enum(["channel", "chat"]).default("channel"),
       replyToMessageId: z.string().optional(),
     },
@@ -304,10 +304,11 @@ export function registerTools(server: McpServer, app: App): void {
     },
     async ({ conversationId, messageId, text }) => {
       try {
-        const res = await call("messages.edit", {
-          params: { conversationId, messageId },
-          body: { contenttype: "text", ...(await htmlBody(text)), id: messageId, type: "Message", conversationid: conversationId },
-        });
+        // PUT replaces the whole message: carry over attachments, or they disappear
+        const current = (await call("messages.get", { params: { conversationId, messageId } })).json as any;
+        const body = { contenttype: "text", ...(await htmlBody(text)), id: messageId, type: "Message", conversationid: conversationId } as any;
+        if (current?.properties?.files) body.properties = { ...body.properties, files: current.properties.files };
+        const res = await call("messages.edit", { params: { conversationId, messageId }, body });
         return ok({ edited: messageId, status: res.status });
       } catch (e) {
         return fail(e);
@@ -467,10 +468,16 @@ export function registerTools(server: McpServer, app: App): void {
     },
     async ({ fileReference, outPath }) => {
       try {
+        const ref = new URL(fileReference);
+        // the SharePoint token goes to this host, so only SharePoint hosts are allowed
+        if (ref.protocol !== "https:" || !ref.hostname.endsWith(".sharepoint.com")) {
+          throw new Error(`not a SharePoint/OneDrive file: ${ref.host}`);
+        }
         const res = await call("files.download", {
-          params: { host: new URL(fileReference).host, shareId: "u!" + Buffer.from(fileReference).toString("base64url") },
+          params: { host: ref.host, shareId: "u!" + Buffer.from(fileReference).toString("base64url") },
           raw: true,
           timeoutMs: 300000,
+          maxBytes: 250 * 1024 * 1024,
         });
         const buf = res.buffer;
         if (!buf) throw new Error("download returned no data");
