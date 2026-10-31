@@ -126,7 +126,8 @@ export function registerTools(server: McpServer, app: App): void {
   }
 
   // Teams localizes the OneDrive folder for chat uploads; uploading to the wrong name creates a second one.
-  // After a language switch both can exist, and the one Teams writes to now is the one changed last.
+  // After a language switch both can exist; the newer one belongs to the current language (a folder's
+  // lastModifiedDateTime does not move when files are added, so this compares creation in practice).
   const CHAT_FILES_FOLDERS = ["Microsoft Teams Chat Files", "Microsoft Teams-Chatdateien"];
   let chatFilesFolder: string | undefined;
   async function findChatFilesFolder(): Promise<string> {
@@ -282,11 +283,10 @@ export function registerTools(server: McpServer, app: App): void {
     "List messages of a channel or chat conversation",
     {
       conversationId: z.string().describe("Channel or chat conversation ID"),
-      kind: z.enum(["channel", "chat"]).default("channel"),
       cursor: z.string().optional().describe("olderCursor from the previous result, to get the next older page"),
       limit: z.number().int().min(1).max(200).optional(),
     },
-    async ({ conversationId, kind, cursor, limit }) => {
+    async ({ conversationId, cursor, limit }) => {
       try {
         // the cursor is the query of chatsvc's backwardLink; only these two values are taken from it, never a host or path
         const page = new URLSearchParams(cursor ?? "");
@@ -326,10 +326,9 @@ export function registerTools(server: McpServer, app: App): void {
         .string()
         .min(1)
         .describe("Message text. Markdown subset: **bold**, *italic*, ~~strike~~, `code`, [text](https://...), - lists (numbered lines stay plain text). Mention a person with @their-email, e.g. @alex@contoso.com"),
-      kind: z.enum(["channel", "chat"]).default("channel"),
       replyToMessageId: z.string().optional(),
     },
-    async ({ conversationId, text, kind, replyToMessageId }) => {
+    async ({ conversationId, text, replyToMessageId }) => {
       try {
         const key = replyToMessageId ? "messages.reply" : "messages.send";
         const res = await singleFlight(JSON.stringify([key, conversationId, replyToMessageId, text]), async () =>

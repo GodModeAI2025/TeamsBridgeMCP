@@ -57,7 +57,7 @@ Usually nothing to configure. At sign-in the server reads the chat region, the p
 | `--onedrive-host` | `TEAMS_ONEDRIVE_HOST` | detected at sign-in | Your OneDrive host for `upload_file`, e.g. `contoso-my.sharepoint.com`. Set it only if detection fails: open OneDrive in the browser and copy the host from the address bar. |
 | `--region` | `TEAMS_REGION` | detected, else `emea` | Chat service region of your tenant, e.g. `emea`, `amer` or `apac`. |
 | `--partition` | `TEAMS_PARTITION` | detected, else `emea-02` | Middle-tier partition used for profiles and meetings. |
-| `--chat-files-folder` | `TEAMS_CHAT_FILES_FOLDER` | found in your OneDrive | OneDrive folder Teams uses for chat uploads. The server looks for the English and German name and takes the one changed last; set this if Teams runs in another language. |
+| `--chat-files-folder` | `TEAMS_CHAT_FILES_FOLDER` | found in your OneDrive | OneDrive folder Teams uses for chat uploads. The server looks for the English and German name and takes the newer one; set this if Teams runs in another language. |
 | `--browser` | `TEAMS_BROWSER` | `chrome` | Browser for sign-in: `chrome` or `msedge` |
 | `--session-file` | `TEAMS_SESSION_FILE` | `data/session.json` | Different session location |
 | `--endpoints-file` | `TEAMS_ENDPOINTS_FILE` | `data/endpoints.json` | Your own registry file |

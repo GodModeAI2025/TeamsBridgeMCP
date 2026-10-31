@@ -37,8 +37,9 @@ const PROFILE_DIR = path.join(ROOT, "data", "browser-profile");
  */
 export function staleBrowserPids(profileDir = PROFILE_DIR): number[] {
   const win = process.platform === "win32";
+  // single quotes only: powershell.exe -Command tends to strip embedded double quotes
   const out = win
-    ? execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }"], { encoding: "utf8" })
+    ? execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { '{0} {1}' -f $_.ProcessId, $_.CommandLine }"], { encoding: "utf8" })
     : execFileSync("ps", ["-axww", "-o", "pid=,command="], { encoding: "utf8" });
   const needle = `--user-data-dir=${profileDir}`;
   return out
@@ -59,7 +60,12 @@ async function launch(headless: boolean) {
   try {
     return await chromium.launchPersistentContext(PROFILE_DIR, opts);
   } catch (e) {
-    const pids = staleBrowserPids();
+    let pids: number[] = [];
+    try {
+      pids = staleBrowserPids();
+    } catch {
+      // process listing failed: report the launch error, not this one
+    }
     if (!pids.length) throw e;
     for (const pid of pids) {
       try {
