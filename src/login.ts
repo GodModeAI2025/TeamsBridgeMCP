@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright-core";
@@ -29,6 +30,48 @@ const SEARCH_AUDIENCE = "66a88757-258c-4c72-893c-3e8bed4d6899";
 
 // Persistent profile: after the first login, Microsoft SSO usually logs in again without prompting.
 const PROFILE_DIR = path.join(ROOT, "data", "browser-profile");
+
+/**
+ * PIDs of browsers still running on our profile, e.g. after the host crashed during a sign-in.
+ * Such a process holds the profile lock, and every later launch fails until it is gone.
+ */
+export function staleBrowserPids(profileDir = PROFILE_DIR): number[] {
+  const win = process.platform === "win32";
+  const out = win
+    ? execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }"], { encoding: "utf8" })
+    : execFileSync("ps", ["-axww", "-o", "pid=,command="], { encoding: "utf8" });
+  const needle = `--user-data-dir=${profileDir}`;
+  return out
+    .split(/\r?\n/)
+    .filter((l) => (win ? l.toLowerCase().includes(needle.toLowerCase()) : l.includes(needle)))
+    .map((l) => Number(l.trim().split(/\s+/)[0]))
+    .filter((pid) => pid > 0 && pid !== process.pid);
+}
+
+async function launch(headless: boolean) {
+  const opts = {
+    channel: process.env.TEAMS_BROWSER || "chrome",
+    headless,
+    viewport: null,
+    // Edge on macOS otherwise writes its HTTP cache to ~/Library/Caches, next to the user's own Edge, where deleting data/ misses it
+    args: [`--disk-cache-dir=${path.join(PROFILE_DIR, "cache")}`],
+  };
+  try {
+    return await chromium.launchPersistentContext(PROFILE_DIR, opts);
+  } catch (e) {
+    const pids = staleBrowserPids();
+    if (!pids.length) throw e;
+    for (const pid of pids) {
+      try {
+        process.kill(pid);
+      } catch {
+        // already gone
+      }
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+    return chromium.launchPersistentContext(PROFILE_DIR, opts);
+  }
+}
 
 /** Returns the JWT `aud` claim of a "Bearer <jwt>" header value, or undefined. */
 export function bearerAudience(header: string | undefined): string | undefined {
@@ -67,11 +110,7 @@ export async function browserLogin(
   out: string,
   { headless = false, timeoutMs = 5 * 60_000 } = {},
 ): Promise<{ tokenAudiences: string[]; out: string }> {
-  const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
-    channel: process.env.TEAMS_BROWSER || "chrome",
-    headless,
-    viewport: null,
-  });
+  const ctx = await launch(headless);
   const tokens: Record<string, string> = {};
   const detected: Record<string, string> = {};
   ctx.on("request", (req) => {

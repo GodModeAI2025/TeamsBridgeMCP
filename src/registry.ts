@@ -23,7 +23,6 @@ export function loadRegistry(file: string): EndpointRegistry {
 const URL_DEFAULTS: Record<string, string> = {
   TEAMS_REGION: "emea",
   TEAMS_PARTITION: "emea-02",
-  TEAMS_CHAT_FILES_FOLDER: "Microsoft Teams Chat Files",
 };
 
 // Values the login read from the Teams client's traffic; flags and environment still win

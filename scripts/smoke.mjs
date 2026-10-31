@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
 import { expandUrl, setDetected } from "../dist/registry.js";
 import { htmlToText, toTeamsHtml } from "../dist/format.js";
-import { detectTenantValues } from "../dist/login.js";
+import { detectTenantValues, staleBrowserPids } from "../dist/login.js";
 import { buildUrl } from "../dist/http.js";
 
 process.env.TEAMS_ONEDRIVE_HOST = "contoso-my.sharepoint.com";
@@ -39,6 +41,13 @@ const m = toTeamsHtml("hi @alex_b@contoso.com", new Map([["alex_b@contoso.com", 
 assert.equal(m.content, '<p>hi <span itemscope itemtype="http://schema.skype.com/Mention" itemid="0">Alex &lt;B&gt;</span></p>');
 assert.equal(m.mentions[0].mri, "8:orgid:1111");
 assert.equal(htmlToText("<p>a &amp; b</p><p>c<br>d</p><ul><li>x</li></ul>"), "a & b\nc\nd\n- x");
+
+// a leftover browser on our profile is found by its --user-data-dir (ps on macOS/Linux, CIM on Windows)
+const fakeDir = path.join(os.tmpdir(), "teams-smoke-profile");
+const fake = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)", "--", `--user-data-dir=${fakeDir}`]);
+await new Promise((r) => setTimeout(r, 300));
+assert.ok(staleBrowserPids(fakeDir).includes(fake.pid));
+fake.kill();
 
 const child = process.argv[2] ? spawn(process.execPath, [process.argv[2]]) : spawn("node", ["dist/index.js"]);
 let buf = "";

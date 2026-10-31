@@ -109,6 +109,46 @@ export function registerTools(server: McpServer, app: App): void {
     return token ? JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")).oid : undefined;
   }
 
+  // A host that times out retries the call; the same send within 30 s gets the first result instead of a second post.
+  // Not for edit_message: an idempotent PUT must go out again, or A -> B -> A would report success without sending.
+  const recent = new Map<string, Promise<unknown>>();
+  function singleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    let p = recent.get(key) as Promise<T> | undefined;
+    if (!p) {
+      p = fn();
+      recent.set(key, p);
+      p.then(
+        () => setTimeout(() => recent.delete(key), 30_000).unref(),
+        () => recent.delete(key),
+      );
+    }
+    return p;
+  }
+
+  // Teams localizes the OneDrive folder for chat uploads; uploading to the wrong name creates a second one.
+  // After a language switch both can exist, and the one Teams writes to now is the one changed last.
+  const CHAT_FILES_FOLDERS = ["Microsoft Teams Chat Files", "Microsoft Teams-Chatdateien"];
+  let chatFilesFolder: string | undefined;
+  async function findChatFilesFolder(): Promise<string> {
+    if (process.env.TEAMS_CHAT_FILES_FOLDER) return process.env.TEAMS_CHAT_FILES_FOLDER;
+    if (chatFilesFolder) return chatFilesFolder;
+    let best: { folder: string; modified: string } | undefined;
+    for (const folder of CHAT_FILES_FOLDERS) {
+      try {
+        const modified = String(((await call("files.folder", { params: { folder } })).json as any)?.lastModifiedDateTime ?? "");
+        if (!best || modified > best.modified) best = { folder, modified };
+      } catch (e) {
+        if (!(e instanceof ApiError)) throw e;
+        if (e.status === 404) continue;
+        // 401/403 is a sign-in or access problem, not a missing folder
+        if (e.status === 401 || e.status === 403) throw e;
+        return best?.folder ?? CHAT_FILES_FOLDERS[0]; // unclear answer: use what we have, but ask again next time
+      }
+    }
+    // none yet: the upload creates the default one
+    return best ? (chatFilesFolder = best.folder) : CHAT_FILES_FOLDERS[0];
+  }
+
   // chatsvc message format, as sent by the Teams web client
   function postMessage(conversationId: string, key: string, msg: Record<string, unknown>, replyToMessageId?: string) {
     return call(key, {
@@ -243,19 +283,23 @@ export function registerTools(server: McpServer, app: App): void {
     {
       conversationId: z.string().describe("Channel or chat conversation ID"),
       kind: z.enum(["channel", "chat"]).default("channel"),
-      cursor: z.string().optional().describe("Pagination cursor from previous result"),
+      cursor: z.string().optional().describe("olderCursor from the previous result, to get the next older page"),
       limit: z.number().int().min(1).max(200).optional(),
     },
     async ({ conversationId, kind, cursor, limit }) => {
       try {
+        // the cursor is the query of chatsvc's backwardLink; only these two values are taken from it, never a host or path
+        const page = new URLSearchParams(cursor ?? "");
         const res = await call("messages.list", {
-          params: { conversationId, kind, cursor, pageSize: limit },
+          params: { conversationId, pageSize: limit, startTime: page.get("startTime") ?? undefined, syncState: page.get("syncState") ?? undefined },
         });
         // drop call/membership events and HTML; raw pages are ~100 KB per 50 messages
-        const msgs = (res.json as { messages?: any[] })?.messages;
+        const json = res.json as { messages?: any[]; _metadata?: { backwardLink?: string } };
+        const msgs = json?.messages;
         if (!msgs) return ok(payload(res));
-        return ok(
-          msgs
+        const back = json._metadata?.backwardLink ? new URL(json._metadata.backwardLink).search.slice(1) : undefined;
+        return ok({
+          messages: msgs
             .filter((m) => m.messagetype === "Text" || String(m.messagetype).startsWith("RichText"))
             .map((m) => ({
               id: m.id,
@@ -264,7 +308,9 @@ export function registerTools(server: McpServer, app: App): void {
               text: htmlToText(String(m.content ?? "")).slice(0, 2000),
               files: messageFiles(m),
             })),
-        );
+          // chatsvc repeats the same link at the end of the history
+          olderCursor: msgs.length && back !== cursor ? back : undefined,
+        });
       } catch (e) {
         return fail(e);
       }
@@ -273,7 +319,7 @@ export function registerTools(server: McpServer, app: App): void {
 
   server.tool(
     "send_message",
-    "Send a message to a chat or channel; in channels pass replyToMessageId (the thread's root post id) to reply in that thread. Returns the new messageId (for edit_message/react_message).",
+    "Send a message to a chat or channel; in channels pass replyToMessageId (the thread's root post id) to reply in that thread. Returns the new messageId (for edit_message/react_message). The same text to the same conversation within 30 s is sent only once.",
     {
       conversationId: z.string().describe("Conversation ID from list_chats, list_channels or start_chat"),
       text: z
@@ -286,7 +332,9 @@ export function registerTools(server: McpServer, app: App): void {
     async ({ conversationId, text, kind, replyToMessageId }) => {
       try {
         const key = replyToMessageId ? "messages.reply" : "messages.send";
-        const res = await postMessage(conversationId, key, await htmlBody(text), replyToMessageId);
+        const res = await singleFlight(JSON.stringify([key, conversationId, replyToMessageId, text]), async () =>
+          postMessage(conversationId, key, await htmlBody(text), replyToMessageId),
+        );
         return ok({ messageId: res.headers.get("location")?.split("/").pop(), ...(payload(res) as object) });
       } catch (e) {
         return fail(e);
@@ -391,12 +439,17 @@ export function registerTools(server: McpServer, app: App): void {
     },
     async ({ conversationId, path: filePath, name, text }) => {
       try {
-        const reg = app.getRegistry();
         const abs = path.resolve(filePath);
+        return ok(await singleFlight(JSON.stringify(["upload", conversationId, abs, name, text]), () => uploadAndPost(abs)));
+      } catch (e) {
+        return fail(e);
+      }
+
+      async function uploadAndPost(abs: string) {
         if (!fs.existsSync(abs)) throw new Error(`file not found: ${abs}`);
         // shortcut: single PUT upload, SharePoint caps it at 250 MB; switch to an upload session for larger files
         const up = await call("files.upload", {
-          params: { name: name ?? path.basename(abs) },
+          params: { folder: await findChatFilesFolder(), name: name ?? path.basename(abs) },
           body: fs.readFileSync(abs),
           timeoutMs: 300000,
         });
@@ -452,9 +505,7 @@ export function registerTools(server: McpServer, app: App): void {
           messagetype: "RichText/Html",
           properties: { files: JSON.stringify([file]) },
         });
-        return ok({ sent: payload(res), fileName: item.name, fileReference: objectUrl, sharedWith });
-      } catch (e) {
-        return fail(e);
+        return { sent: payload(res), fileName: item.name, fileReference: objectUrl, sharedWith };
       }
     },
   );

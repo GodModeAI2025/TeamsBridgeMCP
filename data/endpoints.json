@@ -65,13 +65,32 @@
       ],
       "notes": "SharePoint shares API; shareId = 'u!' + base64url(objectUrl from message properties.files); token lives ~1 h"
     },
+    "files.folder": {
+      "method": "GET",
+      "url": "https://${TEAMS_ONEDRIVE_HOST}/_api/v2.0/me/drive/root:/{folder}?$select=id,name,lastModifiedDateTime",
+      "auth": "bearer",
+      "tokenSource": "00000003-0000-0ff1-ce00-000000000000",
+      "params": [
+        {
+          "name": "folder",
+          "in": "path",
+          "required": true
+        }
+      ],
+      "notes": "404 = no such folder; used to find the localized chat files folder (newest lastModifiedDateTime wins)"
+    },
     "files.upload": {
       "method": "PUT",
-      "url": "https://${TEAMS_ONEDRIVE_HOST}/_api/v2.0/me/drive/root:/${TEAMS_CHAT_FILES_FOLDER}/{name}:/content?@microsoft.graph.conflictBehavior=rename",
+      "url": "https://${TEAMS_ONEDRIVE_HOST}/_api/v2.0/me/drive/root:/{folder}/{name}:/content?@microsoft.graph.conflictBehavior=rename",
       "auth": "bearer",
       "tokenSource": "00000003-0000-0ff1-ce00-000000000000",
       "bodyType": "binary",
       "params": [
+        {
+          "name": "folder",
+          "in": "path",
+          "required": true
+        },
         {
           "name": "name",
           "in": "path",

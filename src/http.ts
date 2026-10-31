@@ -85,7 +85,8 @@ export async function apiRequest(
   }
 
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 60000);
+  // below the ~30 s many MCP hosts allow per tool call, so the error reaches the agent instead of a host timeout and retry
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 25000);
   try {
     const res = await fetch(url, { ...init, signal: ctrl.signal });
     if (res.status === 401) {

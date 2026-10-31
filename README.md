@@ -16,8 +16,8 @@ Landing page with architecture diagram: https://godmodeai2025.github.io/TeamsBri
 | `teams_login` | Opens Chrome so you can sign in; session is saved automatically |
 | `list_chats` | Recent chats, meeting chats and channels, newest first |
 | `list_channels` | Your teams and their channels |
-| `list_messages` | Messages of a chat or channel, including attached files |
-| `send_message` | Send to a chat or channel; `replyToMessageId` replies in a channel thread. Markdown (bold, italic, strike, code, links, lists) becomes Teams formatting, `@name@contoso.com` mentions that person. Returns the `messageId` |
+| `list_messages` | Messages of a chat or channel, including attached files; `olderCursor` fetches the next older page |
+| `send_message` | Send to a chat or channel (the same text to the same chat within 30 s is sent once, so a client retry does not post twice); `replyToMessageId` replies in a channel thread. Markdown (bold, italic, strike, code, links, lists) becomes Teams formatting, `@name@contoso.com` mentions that person. Returns the `messageId` |
 | `edit_message` | Change the text of one of your messages, attachments stay |
 | `react_message` | Add a reaction (like, heart, laugh, surprised, sad, angry) |
 | `start_chat` | Start or reopen a chat by e-mail address |
@@ -42,11 +42,11 @@ npm run build
 npm run login        # Chrome opens, sign in, the window closes by itself
 ```
 
-Prefer Edge? `TEAMS_BROWSER=msedge npm run login`, and pass `--browser msedge` to the server.
+Prefer Edge? `npm run login -- --browser msedge`, and pass `--browser msedge` to the server. The commands are the same on macOS and Windows (Terminal, cmd or PowerShell).
 
-`npm run login` writes `data/session.json` (mode 0600, gitignored) and keeps a browser profile in `data/browser-profile/` so later sign-ins usually need no password. You can also call the `teams_login` tool from your agent instead.
+`npm run login` writes `data/session.json` (gitignored; mode 0600 on macOS and Linux, on Windows it is protected by the folder's permissions, so keep the project inside your user profile) and keeps a browser profile in `data/browser-profile/` so later sign-ins usually need no password. You can also call the `teams_login` tool from your agent instead.
 
-Expired tokens (chat about 24 h, files about 1 h) are refreshed by the server itself with a headless sign-in. Only when Microsoft asks for password or MFA does it open the Chrome window again. HTTP 403 is passed through unchanged: it means no access to that chat or a wrong region, and a new sign-in would not help.
+Expired tokens (chat about 24 h, files about 1 h) are refreshed by the server itself with a headless sign-in. Only when Microsoft asks for password or MFA does it open the Chrome window again. If Microsoft asks "Stay signed in?" during the first sign-in, choose yes: on a Mac without company device sign-in the silent refresh only works then, otherwise the stored profile keeps no login. HTTP 403 is passed through unchanged: it means no access to that chat or a wrong region, and a new sign-in would not help.
 
 ## Configuration
 
@@ -57,7 +57,7 @@ Usually nothing to configure. At sign-in the server reads the chat region, the p
 | `--onedrive-host` | `TEAMS_ONEDRIVE_HOST` | detected at sign-in | Your OneDrive host for `upload_file`, e.g. `contoso-my.sharepoint.com`. Set it only if detection fails: open OneDrive in the browser and copy the host from the address bar. |
 | `--region` | `TEAMS_REGION` | detected, else `emea` | Chat service region of your tenant, e.g. `emea`, `amer` or `apac`. |
 | `--partition` | `TEAMS_PARTITION` | detected, else `emea-02` | Middle-tier partition used for profiles and meetings. |
-| `--chat-files-folder` | `TEAMS_CHAT_FILES_FOLDER` | `Microsoft Teams Chat Files` | OneDrive folder Teams uses for chat uploads. It is localized, e.g. `Microsoft Teams-Chatdateien` in German. |
+| `--chat-files-folder` | `TEAMS_CHAT_FILES_FOLDER` | found in your OneDrive | OneDrive folder Teams uses for chat uploads. The server looks for the English and German name and takes the one changed last; set this if Teams runs in another language. |
 | `--browser` | `TEAMS_BROWSER` | `chrome` | Browser for sign-in: `chrome` or `msedge` |
 | `--session-file` | `TEAMS_SESSION_FILE` | `data/session.json` | Different session location |
 | `--endpoints-file` | `TEAMS_ENDPOINTS_FILE` | `data/endpoints.json` | Your own registry file |
@@ -102,6 +102,8 @@ The same with environment variables:
 }
 ```
 
+On Windows the path in `args` needs forward slashes or doubled backslashes, e.g. `"C:/Users/you/TeamsBridgeMCP/dist/index.js"`.
+
 An unknown flag stops the server with an error, so typos show up right away.
 
 ## Test
@@ -121,6 +123,12 @@ Tools report `HTTP 404/410` or auth errors when Microsoft moved an endpoint. Re-
    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
      --remote-debugging-port=9222 --user-data-dir="$HOME/.teams-cdp-profile"
    ```
+   On Windows (PowerShell):
+   ```powershell
+   & "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" `
+     --remote-debugging-port=9222 --user-data-dir="$env:USERPROFILE\.teams-cdp-profile"
+   ```
+   Edge works the same, e.g. `& "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"`.
    Open https://teams.microsoft.com there and sign in.
 2. `npm run capture -- --label messages`
 3. Do the action in Teams (open a channel, send a message, page back).

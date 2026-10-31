@@ -102,7 +102,7 @@
     <figcaption>Everything in the left frame runs on your machine. Diagram made with <a href="https://github.com/tt-a1i/archify">Archify</a>.</figcaption>
   </figure>
   <ol class="steps">
-    <li><strong>Sign in once.</strong> <code>npm run login</code> opens Chrome or Edge with a dedicated profile. You sign in as usual, MFA included. The server reads the tokens from the app's own requests and writes them to <code>data/session.json</code>.</li>
+    <li><strong>Sign in once.</strong> <code>npm run login</code> opens Chrome or Edge with a dedicated profile. You sign in as usual, MFA included. If Microsoft asks "Stay signed in?", say yes, otherwise the saved profile cannot renew the login on its own. The server reads the tokens from the app's own requests and writes them to <code>data/session.json</code>.</li>
     <li><strong>Agent calls a tool.</strong> Your MCP client starts the server over stdio. Each tool looks up its HTTP request in <code>data/endpoints.json</code>, fills in your tenant values and sends it with your token.</li>
     <li><strong>Tokens renew themselves.</strong> When a token is about to expire or a call returns 401, the server signs in again headless with the saved profile. A window only appears when Microsoft asks for your password or MFA. HTTP 403 is passed through as is: it means no access to that chat or a wrong region, and signing in again would not change it.</li>
   </ol>
@@ -114,7 +114,7 @@
       <tbody>
         <tr><td><code>list_chats</code></td><td>Recent chats, meeting chats and channels, newest first, with names for 1:1 chats</td><td class="ex">"What happened in my chats this morning?"</td></tr>
         <tr><td><code>list_channels</code></td><td>Your teams and their channels</td><td class="ex">"Which channels does the Platform team have?"</td></tr>
-        <tr><td><code>list_messages</code></td><td>Messages of a chat or channel, including attached files</td><td class="ex">"Summarize the last 50 messages in #release."</td></tr>
+        <tr><td><code>list_messages</code></td><td>Messages of a chat or channel, including attached files, page by page into the past</td><td class="ex">"Summarize the last 50 messages in #release."</td></tr>
         <tr><td><code>send_message</code></td><td>Post to a chat or channel, or reply in a channel thread. Markdown (bold, italic, code, links, lists) is sent as Teams formatting, <code>@name@contoso.com</code> mentions the person</td><td class="ex">"Reply in that thread that the fix is deployed and mention Alex."</td></tr>
         <tr><td><code>edit_message</code></td><td>Change the text of one of your messages, attachments stay</td><td class="ex">"Fix the typo in the message you just sent."</td></tr>
         <tr><td><code>react_message</code></td><td>Like, heart, laugh and the other Teams reactions</td><td class="ex">"Give Sam's announcement a like."</td></tr>
@@ -152,7 +152,7 @@ npm install
 npm run build
 npm test          # optional: checks the build, needs no Teams session
 npm run login     # browser opens, sign in, the window closes by itself</code></pre>
-  <p>Prefer Edge? Run <code>TEAMS_BROWSER=msedge npm run login</code> and pass <code>--browser msedge</code> to the server.</p>
+  <p>Prefer Edge? Run <code>npm run login -- --browser msedge</code> and pass <code>--browser msedge</code> to the server. The commands are the same on macOS and Windows.</p>
 
   <h2 id="config">What you may need to configure</h2>
   <p>Usually nothing. Nothing tenant-specific is built in: at sign-in the server reads your chat region, partition and OneDrive host from the Teams client's own requests and stores them with the session. Flags or environment variables override what it found, flags win over the environment. <code>teams_status</code> shows the detected values.</p>
@@ -163,7 +163,7 @@ npm run login     # browser opens, sign in, the window closes by itself</code></
         <tr><td><code>--onedrive-host</code></td><td><code>TEAMS_ONEDRIVE_HOST</code></td><td>detected at sign-in</td><td>Your OneDrive host, for example <code>contoso-my.sharepoint.com</code>, used by <code>upload_file</code>. Set it only if detection fails: open OneDrive in the browser and copy the host from the address bar.</td></tr>
         <tr><td><code>--region</code></td><td><code>TEAMS_REGION</code></td><td>detected, else <code>emea</code></td><td>Chat service region, for example <code>emea</code>, <code>amer</code> or <code>apac</code>.</td></tr>
         <tr><td><code>--partition</code></td><td><code>TEAMS_PARTITION</code></td><td>detected, else <code>emea-02</code></td><td>Partition for profiles and meetings.</td></tr>
-        <tr><td><code>--chat-files-folder</code></td><td><code>TEAMS_CHAT_FILES_FOLDER</code></td><td><code>Microsoft Teams Chat Files</code></td><td>OneDrive folder for chat uploads. Teams localizes it, so use your language's name if it differs.</td></tr>
+        <tr><td><code>--chat-files-folder</code></td><td><code>TEAMS_CHAT_FILES_FOLDER</code></td><td>found in your OneDrive</td><td>OneDrive folder for chat uploads. The English and German names are found by themselves; set it for other languages.</td></tr>
         <tr><td><code>--browser</code></td><td><code>TEAMS_BROWSER</code></td><td><code>chrome</code></td><td>Browser for sign-in: <code>chrome</code> or <code>msedge</code>.</td></tr>
         <tr><td><code>--session-file</code></td><td><code>TEAMS_SESSION_FILE</code></td><td><code>data/session.json</code></td><td>Optional: store the session elsewhere.</td></tr>
         <tr><td><code>--endpoints-file</code></td><td><code>TEAMS_ENDPOINTS_FILE</code></td><td><code>data/endpoints.json</code></td><td>Optional: use your own endpoint registry.</td></tr>
@@ -200,12 +200,12 @@ npm run login     # browser opens, sign in, the window closes by itself</code></
     }
   }
 }</code></pre>
-  <p>An unknown flag stops the server with an error, so a typo shows up right away. Then ask your agent to call <code>teams_status</code>.</p>
+  <p>On Windows write the path with forward slashes, e.g. <code>C:/Users/you/TeamsBridgeMCP/dist/index.js</code>. An unknown flag stops the server with an error, so a typo shows up right away. Then ask your agent to call <code>teams_status</code>.</p>
 
   <h2 id="security">Security model</h2>
   <ul>
     <li><strong>Same rights as you.</strong> The server acts with your account's permissions. It cannot see chats, teams or files you could not open yourself.</li>
-    <li><strong>Secrets stay local.</strong> <code>data/session.json</code> (mode 0600), the browser profile and <code>captures/</code> are gitignored and never leave your computer except as requests to Microsoft.</li>
+    <li><strong>Secrets stay local.</strong> <code>data/session.json</code> (mode 0600 on macOS; on Windows the folder's permissions apply, so keep the project in your user profile), the browser profile and <code>captures/</code> are gitignored and never leave your computer except as requests to Microsoft.</li>
     <li><strong>No third party in between.</strong> There is no hosted backend. Requests go straight from your machine to Microsoft 365.</li>
     <li><strong>Agents act in your name.</strong> Messages from others are input your agent reads. Keep tool approval on in your MCP client for <code>send_message</code>, <code>edit_message</code>, <code>react_message</code>, <code>upload_file</code> and <code>start_chat</code>, so a crafted message cannot make the agent post or share files without you seeing it.</li>
     <li><strong>Leaked session?</strong> Sign out of Teams on all devices or reset your password. That invalidates the stored tokens.</li>
